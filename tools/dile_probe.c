@@ -84,19 +84,21 @@ int main(int argc, char **argv) {
   signal(SIGTERM, on_term);
   signal(SIGINT, on_term);
 
-  int r = reg(channel, pcm_callback);
-  fprintf(stderr, "RegSendPCMCallback(%d) = %d\n", channel, r);
-  if (r != 0) {
-    fprintf(stderr, "register failed\n");
-    dlclose(lib);
-    return 4;
-  }
+  int r;
+  // btaudiosrc order: StartUpload first, then RegSendPCMCallback (matches its disassembly).
   r = start(channel);
   fprintf(stderr, "StartUpload(%d) = %d\n", channel, r);
   if (r != 0) {
     fprintf(stderr, "StartUpload failed\n");
     dlclose(lib);
     return 5;
+  }
+  r = reg(channel, pcm_callback);
+  fprintf(stderr, "RegSendPCMCallback(%d) = %d\n", channel, r);
+  if (r != 0) {
+    fprintf(stderr, "register failed\n");
+    dlclose(lib);
+    return 4;
   }
 
   for (int i = 0; i < seconds * 10 && !stop; ++i) {

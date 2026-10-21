@@ -119,3 +119,28 @@ Plain `StartUpload` from a third-party process yields silence. The remaining unk
 
 This is the next reverse-engineering target. It is a routing/context problem, **not** a signature
 problem (the signature is recovered above).
+
+## Additional on-device findings (2026-10-21, second pass)
+
+- **Call order**: `btaudiosrc` calls `StartUpload(channel)` **before** `RegSendPCMCallback(channel, cb)`.
+  `tools/dile_probe.c` was updated to match; the order did **not** change the silence result (still
+  `rms=0` + `Device or resource busy`), so ordering is not the blocker.
+- **Launch context is the key difference**: `btaudiosrc` is an Upstart job (`/etc/init/btaudiosrc.conf`,
+  `start on core-boot-done`) — launched **at boot** in the system audio-pipeline context. `acr2` is
+  likewise a system service. A post-boot SSH process initializes its own Utopia/MMIO middleware copy,
+  which collides (`Device or resource busy` + `UTOPIA ASSERT … MDrv_MMIO_Init`) and never fills the DMA
+  buffer. This is a **context/routing** problem, not a call-signature problem.
+- **audiod loopback/record path** (the promising "supported" route): `audiod` contains
+  `State::setLoopbackStatus`/`getLoopbackStatus`/`setRecordStatus`/`isRecording` and
+  `PulseAudioMixer::loopback_set_parameters(const char*)`, plus a `precord` Pulse sink mentioned
+  alongside `pcm_output`. The `com.webos.audio/state/set` JSON schema accepts
+  `{"loopback": "<string>"}`. This is how media audio can likely be mirrored into a capturable sink
+  **without** changing the speaker routing. Exact accepted `loopback` string values were not recovered
+  (only the schema + log strings).
+- **`luna-send` from SSH is empty**: every `luna-send` call (including the known-working
+  `org.webosbrew.hbchannel.service/exec`, verified via a file-write side effect that did **not** run)
+  returns nothing from an SSH shell. `luna-send -m <name>` DID get a hub response
+  ("service name already exists"), proving the hub is reachable — so this is an LS2 client
+  ACL/context issue for the SSH process, **not** a dead bus. The AudioCast **app** calls LS2 via
+  PalmServiceBridge in the proper app context, so it may be able to drive `com.webos.audio/state/set`
+  even though the SSH `luna-send` CLI cannot. This is untested until the app is installed on a TV.
