@@ -1,6 +1,19 @@
 # Compatibility and qualification matrix
 
-**No physical TV model is qualified by this release.** No actual TV playback, internal speakers, HDMI, ARC/eARC, Bluetooth, optical, protected media, reboot or standby has been tested during this build. Do not convert upstream anecdotes, an open device, or synthetic integration tests into a supported-model claim.
+**No physical TV model is qualified for working capture by this release.** One real LG **MStar** unit was tested on 2026-10-21 and found to have **no usable ALSA/PulseAudio capture path** (full writeup: `docs/mstar-findings.md`). Do not convert upstream anecdotes, an open device, or synthetic integration tests into a supported-model claim.
+
+## Real-hardware test — LG MStar webOS TV (2026-10-21)
+
+| Aspect | Result |
+|---|---|
+| SoC / arch | **MStar** (kernel `4.4.84-636.glacier.26`), ARMv7l — **not Realtek** |
+| Reference `hw:0,13` MARS tap | **Absent** — Realtek-specific, does not exist on MStar |
+| PulseAudio monitor (`pcm_output.monitor`) | **Silent** — media audio bypasses PulseAudio (sinks stay SUSPENDED during playback) |
+| MStar MAD ALSA capture (`hw:0,0/0,1/1,0/1,1`) | **Hazardous + empty** — 0 bytes; opening wedges the kernel in D-state (reboot to clear). Now hard-blocked. |
+| Confirmed vendor capture path | **`libdile_audio_pcm.so`** (`RegSendPCMCallback`/`StartUpload`), used by `btaudiosrc` (A2DP BT audio-out) and `acr2` (Samba TV ACR). **Not yet implemented** — signatures need binary RE. |
+
+Implication: AudioCast's ALSA backend does not work on this SoC family. A native DILE-PCM vendor backend is required and is the documented next step.
+
 
 | Model / environment | SoC / architecture | Firmware / version | Source/backend | Format | Evidence/status |
 |---|---|---|---|---|---|

@@ -115,13 +115,43 @@ void atomic_file(const std::string &p, const std::string &text) {
     throw std::runtime_error("state commit failed");
   }
 }
+static std::string proc_pcm_path() {
+  const char *override = getenv("AUDIOCAST_PROC_PCM");
+  return override && *override ? override : "/proc/asound/pcm";
+}
+// A capture PCM is hazardous when its ALSA driver is the MStar MAD decoder. Opening those devices
+// has been observed to wedge the kernel in uninterruptible sleep on real LG MStar hardware; they
+// carry no playback audio. Keyed off the /proc/asound/pcm driver id/name, never a card index.
+std::string capture_hazard(const std::string &device) {
+  std::smatch dm;
+  if (!std::regex_match(device, dm, std::regex("hw:([0-9]{1,3}),([0-9]{1,3})")))
+    return "";
+  int card = std::stoi(dm[1]), dev = std::stoi(dm[2]);
+  std::istringstream in(read_file(proc_pcm_path()));
+  std::string line;
+  std::regex re("^([0-9]+)-([0-9]+): (.*)");
+  while (std::getline(in, line)) {
+    std::smatch m;
+    if (!std::regex_search(line, m, re) || std::stoi(m[1]) != card || std::stoi(m[2]) != dev)
+      continue;
+    std::string name = m[3];
+    if (name.find("mad_pcm") != std::string::npos || name.find("MStar MAD") != std::string::npos)
+      return "MStar MAD decoder capture device: opening it wedges the kernel driver in "
+             "uninterruptible sleep (confirmed on real hardware) and carries no playback audio. "
+             "Blocked. Use the vendor loopback backend; override only with "
+             "AUDIOCAST_ALLOW_MSTAR_MAD_CAPTURE=1 if you accept the hang risk.";
+    return "";
+  }
+  return "";
+}
 Json discover() {
   void *alsa = dlopen("libasound.so.2", RTLD_LAZY | RTLD_LOCAL);
   bool alsa_present = alsa != nullptr;
   if (alsa)
     dlclose(alsa);
   Json dev = Json::array();
-  std::istringstream in(read_file("/proc/asound/pcm"));
+  bool mstar_mad = false;
+  std::istringstream in(read_file(proc_pcm_path()));
   std::string line;
   std::regex re("^([0-9]+)-([0-9]+): (.*)");
   while (std::getline(in, line)) {
@@ -129,24 +159,36 @@ Json discover() {
     if (line.find("capture") == std::string::npos || !std::regex_search(line, m, re))
       continue;
     std::string name = m[3];
-    bool candidate = name.find("CAPTURE_TEST") != std::string::npos;
-    dev.push_back(
-        {{"id", "hw:" + std::to_string(std::stoi(m[1])) + "," + std::to_string(std::stoi(m[2]))},
-         {"name", name},
-         {"backend", "alsa"},
-         {"candidate", candidate},
-         {"verified", false}});
+    std::string id =
+        "hw:" + std::to_string(std::stoi(m[1])) + "," + std::to_string(std::stoi(m[2]));
+    std::string hazard = capture_hazard(id);
+    if (!hazard.empty())
+      mstar_mad = true;
+    bool candidate = hazard.empty() && name.find("CAPTURE_TEST") != std::string::npos;
+    Json entry = {{"id", id},          {"name", name},
+                  {"backend", "alsa"}, {"candidate", candidate},
+                  {"verified", false}, {"safe_to_open", hazard.empty()}};
+    if (!hazard.empty())
+      entry["unsafe_reason"] = hazard;
+    dev.push_back(entry);
   }
-  return {{"backends", Json::array({{{"id", "alsa"}, {"available", alsa_present}},
-                                    {{"id", "pulse-monitor"},
-                                     {"available", false},
-                                     {"reason", "not implemented; no monitor assumed"}},
-                                    {{"id", "vendor"},
-                                     {"available", false},
-                                     {"reason", "no verified vendor interface"}}})},
-          {"devices", dev},
-          {"warning", "Inventory is not proof of playback capture. Test against known authorized "
-                      "TV playback. Never select microphone/default input."}};
+  Json backends =
+      Json::array({{{"id", "alsa"}, {"available", alsa_present}},
+                   {{"id", "pulse-monitor"},
+                    {"available", false},
+                    {"reason", "TV media may bypass PulseAudio (confirmed on MStar: "
+                               "sinks stay SUSPENDED during playback); monitor silent"}},
+                   {{"id", "vendor"},
+                    {"available", false},
+                    {"reason", "DILE/MStar MAD HAL loopback not implemented"}}});
+  std::string warning = "Inventory is not proof of playback capture. Test against known authorized "
+                        "TV playback. Never select microphone/default input.";
+  if (mstar_mad)
+    warning += " MStar MAD decoder capture devices are present and BLOCKED: opening them hangs the "
+               "kernel driver and yields no playback audio. No ALSA capture backend works on this "
+               "SoC; a vendor loopback backend is required.";
+  return {
+      {"backends", backends}, {"devices", dev}, {"soc_mstar_mad", mstar_mad}, {"warning", warning}};
 }
 Json system_info() {
   struct utsname u;

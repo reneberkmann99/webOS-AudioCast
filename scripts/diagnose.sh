@@ -42,11 +42,24 @@ section 'Currently open PCM hardware params (not full capabilities)'
 for f in /proc/asound/card*/pcm*c/sub*/hw_params;do [ ! -r "$f" ] || file "$f";done
 section 'Explicit capture capability query'
 if [ -n "$DEVICE" ]; then
-    BIN=${AUDIOCAST_BIN:-/media/developer/apps/usr/palm/applications/org.webosbrew.audiocast/bin/audiocastd}
-    echo "Explicitly querying $DEVICE; even opening vendor capture hardware may have firmware-specific side effects."
-    if [ -x "$BIN" ];then run "$BIN" --probe-device "$DEVICE";else
-        echo 'Native query binary unavailable. Run arecord --dump-hw-params only as a separate explicit capture test.'
-        echo 'No automated recording or hardware format application is performed by this inventory.'
+    # HARD SAFETY GUARD: MStar MAD decoder capture PCMs wedge the kernel driver in uninterruptible
+    # (D-state) sleep when opened, and carry no playback audio (confirmed on real LG MStar hardware
+    # 2026-10-21). Never open them, not even for --dump-hw-params. Keyed off the driver id/name.
+    CARD=$(printf '%s' "$DEVICE" | sed -n 's/^hw:\([0-9]*\),\([0-9]*\)$/\1/p')
+    DEV=$(printf '%s' "$DEVICE" | sed -n 's/^hw:\([0-9]*\),\([0-9]*\)$/\2/p')
+    PCMLINE=$(printf '%02d-%02d:' "$CARD" "$DEV" 2>/dev/null)
+    if cat /proc/asound/pcm 2>/dev/null | grep -E "^$PCMLINE" | grep -qiE 'mad_pcm|MStar MAD'; then
+        echo "BLOCKED: $DEVICE is an MStar MAD decoder capture device."
+        echo 'Opening it wedges the kernel audio driver in uninterruptible sleep (processes cannot be'
+        echo 'killed; only a reboot clears them) and it carries NO playback audio. Not probed.'
+        echo 'This SoC has no working ALSA capture tap; a vendor DILE/MAD loopback backend is required.'
+    else
+        BIN=${AUDIOCAST_BIN:-/media/developer/apps/usr/palm/applications/org.webosbrew.audiocast/bin/audiocastd}
+        echo "Explicitly querying $DEVICE; even opening vendor capture hardware may have firmware-specific side effects."
+        if [ -x "$BIN" ];then run "$BIN" --probe-device "$DEVICE";else
+            echo 'Native query binary unavailable. Run arecord --dump-hw-params only as a separate explicit capture test.'
+            echo 'No automated recording or hardware format application is performed by this inventory.'
+        fi
     fi
 else echo 'Not requested. Re-run with --device hw:CARD,DEVICE to query supported native constraints without applying capture params.';fi
 section 'Interpretation'

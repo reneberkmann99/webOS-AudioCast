@@ -48,6 +48,48 @@ class AlsaBackendTests(unittest.TestCase):
     def cleanup(self):
         self.proc.terminate();self.proc.wait(timeout=5);self.proc.stderr.close();self.tmp.cleanup()
 
+    def test_mstar_mad_capture_is_blocked_before_touching_kernel(self):
+        tmp=tempfile.TemporaryDirectory(prefix='ac-mad-');self.addCleanup(tmp.cleanup)
+        base=Path(tmp.name)
+        pcm=base/'pcm'
+        pcm.write_text('00-00: mad_pcm : MStar MAD PCM CARD0 No.00 : playback 1 : capture 1\n'
+                       '00-01: mad_pcm : MStar MAD PCM CARD0 No.01 : playback 1 : capture 1\n'
+                       '00-06: mad_pcm : MStar MAD PCM CARD0 No.06 : playback 1\n')
+        env=dict(os.environ,AUDIOCAST_PROC_PCM=str(pcm))
+        # Probe must refuse without ever dlopen-ing ALSA or touching the device.
+        p=subprocess.run([str(BINARY),'--probe-device','hw:0,0'],env=env,capture_output=True,text=True,timeout=5)
+        self.assertNotEqual(p.returncode,0)
+        self.assertIn('MStar MAD',p.stderr)
+        state=base/'state';state.mkdir()
+        (state/'config.json').write_text(json.dumps(
+            {'backend':'alsa','device':'hw:0,0','transport':'rtp','playback_confirmed':True}))
+        proc=subprocess.Popen([str(BINARY),'--state-dir',str(state)],
+            env=dict(env,LD_LIBRARY_PATH=str(LIBDIR)),stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+        token=[None]
+        def api(method,path,body=None):
+            c=http.client.HTTPConnection('127.0.0.1',7071,timeout=2)
+            c.request(method,path,json.dumps(body) if body is not None else None,
+                      {'Authorization':'Bearer '+token[0]})
+            r=c.getresponse();d=json.loads(r.read());c.close();self.assertEqual(r.status,200,d);return d
+        try:
+            for _ in range(100):
+                try:token[0]=json.loads((state/'credentials.json').read_text())['control_token'];api('GET','/v1/status');break
+                except (OSError,ValueError,http.client.HTTPException):time.sleep(.02)
+            else:self.fail('daemon did not start')
+            devs=api('GET','/v1/devices')
+            self.assertTrue(devs['soc_mstar_mad'])
+            hw00=[d for d in devs['devices'] if d['id']=='hw:0,0'][0]
+            self.assertFalse(hw00['safe_to_open'])
+            self.assertFalse(hw00['candidate'])
+            self.assertIn('MStar MAD',hw00['unsafe_reason'])
+            api('POST','/v1/start',{})
+            time.sleep(.3)
+            s=api('GET','/v1/status')
+            self.assertIn('MStar MAD',s['last_error'])
+            self.assertEqual(s['rtp_packets'],0)
+        finally:
+            proc.terminate();proc.wait(timeout=5);proc.stderr.close()
+
     def test_partial_frames_xrun_recovery_and_explicit_capabilities(self):
         self.run_case()
         self.api('POST','/v1/start',{})

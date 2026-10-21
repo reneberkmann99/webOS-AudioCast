@@ -62,6 +62,7 @@ third_party/    pinned nlohmann/json single header (MIT) — nothing else vendor
 - `docs/installation.md` — build, install, playback validation, receiver, upgrade/rollback/removal
 - `docs/receiver.md` — receiver CLI, recording, lighting/FFT hook, latency measurement
 - `docs/compatibility.md` — qualification matrix and required on-TV test worksheet
+- `docs/mstar-findings.md` — **real-hardware** LG MStar investigation (2026-10-21): why ALSA/Pulse capture fails there and the confirmed vendor `libdile_audio_pcm` path
 - `docs/security.md` — trust boundaries, transport limits, credentials, privacy
 - `docs/troubleshooting.md` — failure diagnosis without firmware modification
 - `docs/research.md` — audio-architecture feasibility findings and source attribution

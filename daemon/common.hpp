@@ -4,8 +4,8 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <deque>
@@ -143,4 +143,8 @@ std::string random_token(size_t bytes = 32);
 void atomic_file(const std::string &, const std::string &);
 Json discover();
 Json system_info();
+// Returns a non-empty reason when a capture device is known-hazardous to open. MStar MAD decoder
+// capture PCMs wedge the kernel driver in uninterruptible (D-state) sleep (observed on real LG
+// MStar hardware 2026-10-21); they are a decoder path, not a playback tap.
+std::string capture_hazard(const std::string &device);
 } // namespace ac

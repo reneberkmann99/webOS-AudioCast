@@ -61,6 +61,9 @@ public:
   }
   void open(const Config &c) override {
     fmt_ = c.fmt;
+    std::string hazard = capture_hazard(c.device);
+    if (!hazard.empty() && !getenv("AUDIOCAST_ALLOW_MSTAR_MAD_CAPTURE"))
+      throw std::runtime_error(hazard);
     lib_ = dlopen("libasound.so.2", RTLD_NOW | RTLD_LOCAL);
     if (!lib_)
       throw std::runtime_error("libasound.so.2 unavailable; install/vendor an ABI-compatible ALSA "
@@ -194,6 +197,9 @@ Json probe_device(const std::string &device) {
   Config::parse({{"device", device}}, base, false);
   if (device.empty())
     throw std::runtime_error("explicit device required");
+  std::string hazard = capture_hazard(device);
+  if (!hazard.empty() && !getenv("AUDIOCAST_ALLOW_MSTAR_MAD_CAPTURE"))
+    throw std::runtime_error(hazard);
   void *lib = dlopen("libasound.so.2", RTLD_NOW | RTLD_LOCAL);
   if (!lib)
     throw std::runtime_error("libasound.so.2 unavailable");

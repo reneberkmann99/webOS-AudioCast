@@ -128,8 +128,12 @@ Json Engine::status() {
   j["config"] = config_.json();
   j["hardware_qualified"] = false;
   int64_t last = last_capture_ms_;
-  j["capture_sample_age_ms"] = last > 0 ? Json(std::chrono::duration_cast<std::chrono::milliseconds>(
-      Clock::now().time_since_epoch()).count() - last) : Json(nullptr);
+  j["capture_sample_age_ms"] = last > 0
+                                   ? Json(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                              Clock::now().time_since_epoch())
+                                              .count() -
+                                          last)
+                                   : Json(nullptr);
   return j;
 }
 void Engine::update_config(const Json &j) {
@@ -308,7 +312,9 @@ void Engine::capture_loop() {
         backoff = 100;
         last_read = Clock::now();
         auto captured = Clock::now();
-        last_capture_ms_ = std::chrono::duration_cast<std::chrono::milliseconds>(captured.time_since_epoch()).count();
+        last_capture_ms_ =
+            std::chrono::duration_cast<std::chrono::milliseconds>(captured.time_since_epoch())
+                .count();
         std::vector<double> peak;
         auto levels = rms(data, c.fmt, peak);
         bool signal = *std::max_element(peak.begin(), peak.end()) > 0.0001;
