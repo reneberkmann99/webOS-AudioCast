@@ -1,0 +1,21 @@
+[Unit]
+Description=TV audio RTP adapter (webOS TV -> HyperHDR techno engine)
+After=network-online.target hyperhdr-audio-firewall.service
+Wants=network-online.target hyperhdr-audio-firewall.service
+BindsTo=hyperhdr-techno-supervisor.service
+After=hyperhdr-techno-supervisor.service
+
+[Service]
+Type=simple
+User=rene
+Group=rene
+WorkingDirectory=/home/rene/hyperhdr-techno
+ExecStart=/usr/bin/python3 /home/rene/hyperhdr-techno/tv-audio-adapter.py --bind 0.0.0.0 --port 5004 --tv 10.10.40.104 --engine 127.0.0.1:17000
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/home/rene/hyperhdr-techno
+
+[Install]
+WantedBy=multi-user.target

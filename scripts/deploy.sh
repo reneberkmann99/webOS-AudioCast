@@ -5,7 +5,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 [ "$#" -ge 1 ] && [ "$#" -le 2 ] || { echo "Usage: $0 CONFIGURED_DEVICE [IPK]" >&2; exit 2; }
 DEVICE=$1
-IPK=${2:-$ROOT/dist/org.webosbrew.audiocast_0.1.0_arm.ipk}
+IPK=${2:-$ROOT/dist/org.webosbrew.audiocast_$(cat "$ROOT/VERSION")_arm.ipk}
 [ -f "$IPK" ] || { echo 'IPK missing: build with scripts/build.sh package' >&2; exit 1; }
 python3 "$ROOT/scripts/ipk.py" --validate-only "$IPK"
 ARES=${ARES_INSTALL:-$ROOT/.tools/ares/ares-cli-rs-v0.7.0-linux-x86_64/ares-install}

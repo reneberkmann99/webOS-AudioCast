@@ -83,12 +83,74 @@ class ServiceTests(unittest.TestCase):
             time.sleep(.05)
         else:self.fail('uninstall did not stop detached processes')
 
-    def test_enable_requires_explicit_confirmed_autostart(self):
-        self.ensure();self.assertNotEqual(self.run_manage('enable',False).returncode,0)
-        self.assertFalse((self.hooks/'audiocast').exists())
+    def test_service_boot_enable_is_independent_of_stream_autostart(self):
+        self.ensure();self.assertFalse(self.api('GET','/v1/config')['autostart'])
+        self.run_manage('enable')
+        self.assertTrue((self.hooks/'audiocast').is_symlink())
+        self.assertEqual(self.api('GET','/v1/status')['state'],'idle')
+
+    def test_boot_hook_initializes_cold_state_without_starting_capture(self):
+        subprocess.run(['sh',str(self.app/'service/startup/boot-hook.sh')],env=self.env,
+                       capture_output=True,timeout=5,check=True)
+        for _ in range(100):
+            if (self.state/'credentials.json').exists():break
+            time.sleep(.05)
+        self.creds=json.loads((self.state/'credentials.json').read_text())
+        for _ in range(100):
+            try:status=self.api('GET','/v1/status');break
+            except (OSError,http.client.HTTPException):time.sleep(.05)
+        else:self.fail('boot hook did not start daemon')
+        self.assertEqual(status['state'],'idle');self.assertFalse(status['streaming'])
+        self.assertEqual(self.state.stat().st_mode & 0o777,0o700)
 
     def test_unknown_management_action_rejected(self):
         result=self.run_manage('anything; echo unsafe',False)
         self.assertEqual(result.returncode,2)
+
+    def recovery_fixture(self, fail=False):
+        binary=self.app/'bin/audiocastd';binary.unlink()
+        binary.write_text('#!/bin/bash\nfor arg in "$@"; do\n'
+          ' if [ "$arg" = --restore-dile-gain ]; then\n'
+          '  echo attempt >> "$AUDIOCAST_STATE_DIR/recovery-attempts"\n' +
+          ('  exit 1\n' if fail else '  rm -f "$AUDIOCAST_STATE_DIR/dile-recovery.json"\n  echo restored\n  exit 0\n') +
+          ' fi\ndone\nexec -a "$0" "'+str(ROOT/'build/native/audiocastd')+'" "$@"\n')
+        binary.chmod(0o755)
+        self.state.mkdir(mode=0o700)
+        (self.state/'dile-recovery.json').write_text('{}')  # Only the shell dispatch is doubled.
+
+    def test_interrupted_dile_transaction_recovered_before_daemon_launch(self):
+        self.recovery_fixture()
+        self.ensure()
+        self.assertFalse((self.state/'dile-recovery.json').exists())
+        self.assertEqual((self.state/'recovery-attempts').read_text().splitlines(),['attempt'])
+        self.assertEqual(self.api('GET','/v1/status')['state'],'idle')
+        self.assertFalse(self.api('GET','/v1/status')['streaming'])
+
+    def test_failed_dile_recovery_quarantines_without_repeated_writes(self):
+        self.recovery_fixture(fail=True)
+        self.run_manage('ensure')
+        for _ in range(100):
+            if (self.state/'quarantined').exists() and not (self.state/'supervisor.pid').exists():break
+            time.sleep(.05)
+        else:self.fail('failed DILE recovery did not quarantine service')
+        self.assertTrue((self.state/'dile-recovery.json').exists())
+        self.assertFalse((self.state/'daemon.pid').exists())
+        self.assertEqual((self.state/'recovery-attempts').read_text().splitlines(),['attempt'])
+
+    def test_legacy_busybox_timeout_is_used_with_t_option(self):
+        mocks=self.base/'mocks'
+        timeout=mocks/'timeout'
+        timeout.write_text('#!/bin/sh\nif [ "$1" = --help ]; then echo "Usage: timeout [-t SECS] [-s SIG] PROG ARGS"; exit 0; fi\n[ "$1" = -t ] || exit 91\nshift\nexec /usr/bin/timeout "$@"\n')
+        timeout.chmod(0o755)
+        luna=mocks/'luna-send'
+        luna.write_text('#!/bin/sh\necho \'{"returnValue":true,"soundOut":"test-double"}\'\n')
+        luna.chmod(0o755)
+        self.ensure()
+        for _ in range(100):
+            platform=self.state/'platform.json'
+            if platform.exists() and platform.stat().st_size:break
+            time.sleep(.05)
+        else:self.fail('legacy BusyBox timeout prevented telemetry command execution')
+        self.assertEqual(json.loads(platform.read_text())['soundOut'],'test-double')
 
 if __name__=='__main__':unittest.main()

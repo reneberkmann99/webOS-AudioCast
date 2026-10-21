@@ -1,12 +1,16 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
 # Installed only as a symlink in Homebrew init.d. Return promptly; never block TV boot.
-APP=/media/developer/apps/usr/palm/applications/org.webosbrew.audiocast
-STATE=/var/lib/webos-audiocast
-[ -x "$APP/bin/audiocastd" ] && [ -r "$STATE/config.json" ] || exit 0
+# Starts the BACKGROUND SERVICE (daemon) at boot so the GUI can connect immediately.
+# Whether streaming itself auto-starts is governed by the daemon's own config.autostart.
+APP=${AUDIOCAST_APP_DIR:-/media/developer/apps/usr/palm/applications/org.webosbrew.audiocast}
+STATE=${AUDIOCAST_STATE_DIR:-/var/lib/webos-audiocast}
+[ -x "$APP/bin/audiocastd" ] || exit 0
+[ ! -L "$STATE" ] || exit 1
+umask 077
+mkdir -p "$STATE" || exit 1
+chmod 700 "$STATE" || exit 1
 [ ! -e "$STATE/quarantined" ] || exit 0
-grep -q '"autostart": true' "$STATE/config.json" || exit 0
-grep -q '"playback_confirmed": true' "$STATE/config.json" || exit 0
 [ -e "$STATE/stop" ] && rm -f "$STATE/stop"
 # supervisor owns duplicate prevention and crash backoff; native daemon owns capture recovery.
 if command -v setsid >/dev/null 2>&1; then

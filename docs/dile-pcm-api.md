@@ -5,6 +5,64 @@ from a real LG MStar webOS TV (`libdile_audio_pcm.so`, `libhal_msd96alvx.so`, `b
 This is reverse-engineered knowledge, not LG documentation; treat as provisional until verified
 by an on-device trial.
 
+## Latest result: upload gain unlocks nonzero PCM (23:03 EEST)
+
+**This supersedes the routing/context diagnosis in the historical probe notes below.**
+Those notes established silence at the original gain, not an inability to capture media.
+
+Static analysis of `acr2` at `capture::AudioCapture::StartCapture()` (`0x3cde8`)
+revealed an omitted call: `DILE_AUDIO_PCM_SetVolume(0x007f)` before upload.
+The wrapper accepts packed main/fine gain bytes and invokes `HAL_AUDIO_PCM_SetVolume(0, gain)`;
+the HAL controls upload DSP target 57, not the ordinary speaker-volume API.
+The original upload gain was `12+0`, which its conversion saturates to maximum attenuation.
+
+After explicit permission, a single five-second channel-0 trial changed only upload gain
+`12+0 → 127+0 → 12+0`, while YouTube remained running. Measurements:
+
+```text
+GAIN_TEST original=12 fine=0 requested=127 result=0 verified=1
+progress t=1 calls=41  bytes=188928 rms_1s=0.163655
+progress t=2 calls=83  bytes=382464 rms_1s=0.165248
+progress t=3 calls=125 bytes=576000 rms_1s=0.163387
+progress t=4 calls=166 bytes=764928 rms_1s=0.153189
+progress t=5 calls=208 bytes=958464 rms_1s=0.078799
+GAIN_RESTORE_CALL result=0 verified=1
+StopUpload(0)=0
+GAIN_RESTORED original=12 fine=0 verified=1
+RESULT calls=208 bytes=958464 min=4608 max=4608 rms=0.148537 peak=0.313568
+```
+
+The same five-second probe at the original gain had delivered the same 208 buffers,
+all zero. The approved gain change therefore **does unlock substantial, time-varying PCM
+in a standalone post-boot SSH process**. Utopia/MMIO initialization warnings do not by
+themselves establish a fatal capture-context problem. No routing, mixer, speaker-volume,
+ALSA, permission or firmware changes were made; no audio was stored. The probe exited,
+the original gain was verified restored, and the existing daemon remained running.
+An external 12-second kill timeout and separate six-second rollback path guarded the trial;
+rollback was not needed.
+
+### Follow-up: user-controlled pause/resume correlation
+
+The owner then authorized further temporary-gain tests, each at most 30 seconds with
+restoration, and manually paused and resumed YouTube. Each measurement below was five seconds:
+
+| Playback state | RMS | Peak | Buffers / bytes |
+| --- | ---: | ---: | ---: |
+| Playing | 0.148537 | 0.313568 | 208 / 958464 |
+| Paused by owner | 0.000010 | 0.000061 | 208 / 958464 |
+| Resumed by owner | 0.135366 | 0.316101 | 208 / 958464 |
+
+Upload gain returned to `12+0` after **every** trial, verified after `StopUpload`.
+This establishes a **playback-correlated capture path on the tested TV**. It does not
+establish audible output, every input/output mode, or production reliability. Evidence:
+`build/dile-playback-correlation-proof.json` and the three referenced measurement logs.
+
+**Still unverified:** audible receiver output (the owner selected capture-only verification),
+other media inputs/output configurations, long-running capture and coexistence with active
+Bluetooth/ACR consumers. No audio was saved or sent to a receiver. The bounded native backend is now integrated, installed and capture-only tested through the TV's
+control API; see `docs/capture-fix-20261021.md`. Unlimited or boot-time gain-changing capture is
+not authorized or qualified by these tests.
+
 ## Library chain
 
 `libdile_audio_pcm.so.1` is a thin stub (16-byte functions) that forwards unchanged to
@@ -31,19 +89,18 @@ int DILE_AUDIO_PCM_SetVolume(unsigned int volume16);   // 16-bit value; stub rep
 ## Confirmed call sequence (from `btaudiosrc`, the A2DP Bluetooth audio source)
 
 ```c
-// 1. register the callback  (btaudiosrc: system_dile_startUpload(callback))
-DILE_AUDIO_PCM_RegSendPCMCallback(channel, callback);
-// 2. begin streaming
+// 1. begin upload (corrected from the complete btaudiosrc/acr2 disassembly)
 DILE_AUDIO_PCM_StartUpload(channel);
+// 2. register the callback
+DILE_AUDIO_PCM_RegSendPCMCallback(channel, callback);
 // ... HAL invokes callback(pcm, bytes) repeatedly on its own thread ...
 // 3. stop
 DILE_AUDIO_PCM_StopUpload(channel);
 ```
 
-- `channel` is a small integer (a byte in `btaudiosrc`); `0` is the obvious first guess (MAIN),
-  matching `DILE_AUDIO_DIRECT_CHANNEL_T { MAIN=0, SUB=1 }` in `dile_audio_direct.h`.
-- `btaudiosrc` calls `RegSendPCMCallback(channel, cb)` with the callback as the **2nd** arg and
-  the channel as the **1st** arg, then `StartUpload(channel)`.
+- Channel `0` was used in the playback-correlated trials. Other channels remain untested.
+- `RegSendPCMCallback(channel, cb)` takes the callback as its **2nd** argument and channel
+  as its **1st**. The complete consumer disassembly and working probe use Start then Register.
 
 ## Callback prototype (the critical piece)
 
@@ -89,7 +146,10 @@ This HAL API is what `btaudiosrc` and `acr2` call in normal operation (they do n
 far safer than the broken MStar MAD ALSA capture path. Still, the first trial is run as a
 standalone probe with a hard timeout and the TV is reboot-recoverable.
 
-## On-device probe result (2026-10-21)
+## Historical on-device probe result (2026-10-21, upload gain unchanged)
+
+The root-cause interpretations below were provisional and are superseded by the gain and
+pause/resume experiments above. Silence did not prove that routing changes were required.
 
 `tools/dile_probe.c` (ARM32, cross-compiled) was run on the real TV. Result:
 

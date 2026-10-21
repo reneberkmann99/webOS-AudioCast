@@ -14,6 +14,7 @@ class Engine {
   std::atomic<bool> quit_{false}, intent_{false}, testing_{false}, paused_{false}, active_{false};
   std::atomic<unsigned> generation_{0};
   std::atomic<int64_t> last_capture_ms_{0};
+  std::atomic<int64_t> dile_deadline_ms_{0};
   void capture_loop();
   void network_loop();
   void persist();

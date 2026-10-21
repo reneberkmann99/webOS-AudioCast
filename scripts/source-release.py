@@ -10,7 +10,7 @@ from pathlib import Path
 import tarfile
 
 ROOT=Path(__file__).resolve().parents[1]
-INCLUDE=['app','daemon','service','receiver','scripts','tests','docs','.github','third_party',
+INCLUDE=['app','daemon','service','receiver','scripts','tests','tools','docs','.github','third_party',
          'README.md','LICENSE','NOTICE.md','VERSION','dependencies.lock.json','package.json',
          'package-lock.json','.gitignore','.clang-format']
 

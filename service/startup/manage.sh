@@ -38,12 +38,11 @@ case "$action" in
         ;;
     enable)
         [ -x "$APP/service/startup/boot-hook.sh" ] || { echo 'Boot hook missing' >&2; exit 1; }
-        grep -q '"autostart": true' "$STATE/config.json" && grep -q '"playback_confirmed": true' "$STATE/config.json" || { echo 'Save autostart and confirm playback source first' >&2; exit 1; }
         mkdir -p "$HOOKS"
         if [ -e "$HOOK" ] || [ -L "$HOOK" ]; then
             [ -L "$HOOK" ] && [ "$(readlink "$HOOK")" = "$APP/service/startup/boot-hook.sh" ] || { echo 'Refusing to replace foreign startup file' >&2; exit 1; }
         else ln -s "$APP/service/startup/boot-hook.sh" "$HOOK"; fi
-        echo 'AudioCast startup symlink enabled'
+        echo 'AudioCast startup symlink enabled (service starts at boot)'
         ;;
     disable)
         if [ -L "$HOOK" ]; then

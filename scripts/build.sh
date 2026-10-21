@@ -23,7 +23,7 @@ compile() {
     "$COMPILER" -std=c++11 $EXTRA -Wall -Wextra -Werror -Wpedantic -Wdate-time \
         -pthread -ffile-prefix-map="$ROOT"=. -fmacro-prefix-map="$ROOT"=. \
         -Idaemon -Ithird_party daemon/main.cpp daemon/common.cpp daemon/engine.cpp \
-        daemon/backends/alsa.cpp daemon/network/rtp.cpp daemon/network/http.cpp \
+        daemon/backends/alsa.cpp daemon/backends/dile.cpp daemon/network/rtp.cpp daemon/network/http.cpp \
         daemon/network/stream.cpp -ldl ${CXXFLAGS:-} -o "build/$TARGET/audiocastd"
     if [ "$TARGET" = native ]; then
         build/native/audiocastd --self-test

@@ -1,35 +1,61 @@
 /* SPDX-License-Identifier: MIT */
 (function (global) {
   'use strict';
-  var BASE = "/media/developer/apps/usr/palm/applications/org.webosbrew.audiocast/service/startup/manage.sh";
-  var actions = {ensure: true, enable: true, disable: true, stop: true, status: true, diagnose: true};
-  var bridges = [];
-  function rootAction(action, callback) {
-    if (!actions[action]) { callback(new Error('Unsupported local management action')); return; }
-    if (!global.PalmServiceBridge) { callback(new Error('Homebrew root service unavailable. Open AudioCast on a rooted LG TV with Homebrew Channel installed.')); return; }
-    var bridge = new global.PalmServiceBridge(), done = false;
-    bridges.push(bridge);
-    var timer = global.setTimeout(function () { finish(new Error('Homebrew service timed out; check root status in Homebrew Channel.')); }, 10000);
-    function finish(error, value) {
-      if (done) { return; } done = true; global.clearTimeout(timer);
-      bridges.splice(bridges.indexOf(bridge), 1); callback(error, value);
+  var BASE = '/media/developer/apps/usr/palm/applications/org.webosbrew.audiocast/service/startup/manage.sh';
+  var actions = { ensure: 1, enable: 1, disable: 1, stop: 1, status: 1, diagnose: 1 };
+  var pending = [];
+
+  function callExec(command, onDone) {
+    var bridge = null, finished = false;
+    var timer = global.setTimeout(function () { finish(new Error('Homebrew service timed out. Open Homebrew Channel, then reconnect.')); }, 15000);
+    function finish(error, reply) {
+      if (finished) return;
+      finished = true;
+      global.clearTimeout(timer);
+      if (bridge) { var at = pending.indexOf(bridge); if (at >= 0) pending.splice(at, 1); }
+      onDone(error, reply);
     }
-    bridge.onservicecallback = function (text) {
+    if (global.webOS && global.webOS.service && global.webOS.service.request) {
       try {
-        var reply = JSON.parse(text);
-        if (reply.returnValue === false || reply.error || reply.errorCode) { throw new Error(reply.errorText || reply.error || 'Homebrew exec failed'); }
-        var out = reply.stdoutString || '';
-        if (action === 'ensure') {
-          var credentials = JSON.parse(out);
-          if (!credentials.returnValue || !/^[a-f0-9]{64}$/.test(credentials.control_token) || !/^[a-f0-9]{64}$/.test(credentials.stream_token)) { throw new Error('Invalid AudioCast bootstrap response'); }
-          finish(null, credentials);
-        } else { finish(null, out); }
-      } catch (error) { finish(error); }
+        global.webOS.service.request('luna://org.webosbrew.hbchannel.service', {
+          method: 'exec', parameters: { command: command },
+          onSuccess: function (reply) { finish(null, reply); },
+          onFailure: function (error) { finish(new Error((error && error.errorText) || 'Homebrew exec failed')); }
+        });
+        return;
+      } catch (error) { /* Native PalmServiceBridge is available without the optional webOS.js SDK. */ }
+    }
+    if (!global.PalmServiceBridge) { finish(new Error('Homebrew root service unavailable. Run on a rooted LG TV with Homebrew Channel.')); return; }
+    bridge = new global.PalmServiceBridge();
+    pending.push(bridge); // Retain the bridge until its asynchronous native callback completes.
+    bridge.onservicecallback = function (text) {
+      var reply;
+      try { reply = JSON.parse(text); } catch (error) { finish(new Error('Invalid Homebrew response')); return; }
+      finish(null, reply);
     };
     try {
-      // Both command path and action are fixed. Never insert TV/network input into a shell command.
-      bridge.call('luna://org.webosbrew.hbchannel.service/exec', JSON.stringify({command: "sh '" + BASE + "' " + action}));
+      // PalmServiceBridge takes the FULL method URI and a flat method payload, unlike webOS.service.request.
+      bridge.call('luna://org.webosbrew.hbchannel.service/exec', JSON.stringify({ command: command }));
     } catch (error) { finish(error); }
   }
-  global.AudioCastHomebrew = {rootAction: rootAction};
+
+  global.AudioCastHomebrew = {
+    rootAction: function (action, callback) {
+      if (!actions[action]) { callback(new Error('Unsupported action')); return; }
+      callExec("sh '" + BASE + "' " + action, function (error, reply) {
+        if (error) { callback(error); return; }
+        if (!reply || reply.returnValue === false || reply.error || (typeof reply.code === 'number' && reply.code !== 0)) {
+          callback(new Error((reply && (reply.errorText || reply.stderrString || reply.error)) || 'Homebrew exec failed')); return;
+        }
+        var out = reply.stdoutString || '';
+        if (action !== 'ensure') { callback(null, out); return; }
+        var creds;
+        try { creds = JSON.parse(out); } catch (parseError) { callback(new Error('Invalid bootstrap JSON')); return; }
+        if (!creds.returnValue || !/^[a-f0-9]{64}$/.test(creds.control_token || '') || !/^[a-f0-9]{64}$/.test(creds.stream_token || '')) {
+          callback(new Error('Invalid bootstrap credentials')); return;
+        }
+        callback(null, creds);
+      });
+    }
+  };
 }(window));

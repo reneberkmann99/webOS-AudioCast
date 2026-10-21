@@ -8,17 +8,22 @@ case ${1:-} in
     *) echo 'Usage: diagnose.sh [--device hw:CARD,DEVICE]' >&2; exit 2;;
 esac
 section() { printf '\n### %s\n' "$1"; }
+TIMEOUT_STYLE=gnu
+if command -v timeout >/dev/null 2>&1 && timeout --help 2>&1 | grep -F '[-t SECS]' >/dev/null; then TIMEOUT_STYLE=busybox; fi
 run() {
     printf '\n$'; for arg do printf ' %s' "$arg"; done; printf '\n'
     if ! command -v "$1" >/dev/null 2>&1; then printf 'UNAVAILABLE: %s\n' "$1"; return; fi
-    if command -v timeout >/dev/null 2>&1; then timeout 5 "$@" 2>&1; rc=$?; else
+    if command -v timeout >/dev/null 2>&1; then
+        if [ "$TIMEOUT_STYLE" = busybox ]; then timeout -t 5 "$@" 2>&1; else timeout 5 "$@" 2>&1; fi
+        rc=$?
+    else
         case "$1" in uname|cat|id|ls) "$@" 2>&1;rc=$?;;
         *) echo 'SKIPPED: timeout utility absent; refusing potentially blocking vendor/service command';return;; esac
     fi
     [ "$rc" = 0 ] || printf 'Command exit status: %s (124 usually means timeout)\n' "$rc"
 }
 file() { if [ -r "$1" ]; then run cat "$1"; else printf 'NOT PRESENT/READABLE: %s\n' "$1"; fi; }
-echo 'webOS AudioCast diagnostic inventory 0.1.0'
+echo 'webOS AudioCast diagnostic inventory 0.1.1'
 echo 'Contains TV/system/network identifiers; review before sharing. No credentials/environment/audio are dumped.'
 section 'Kernel, architecture and identity';run uname -a;run uname -m;run id
 for f in /etc/webos-release /etc/os-release /etc/lgmodel /proc/device-tree/model /sys/devices/soc0/family /sys/devices/soc0/soc_id /sys/devices/soc0/machine;do file "$f";done
@@ -26,7 +31,7 @@ section 'CPU and ALSA inventory';file /proc/cpuinfo;file /proc/asound/cards;file
 run arecord -l;run arecord -L
 section 'Mixer READ ONLY — values are never changed';run amixer scontents
 section 'Audio output and TV model — read-only private APIs, firmware dependent'
-run luna-send -n 1 'luna://com.webos.service.audio/getSoundOutput' '{}'
+run luna-send -n 1 -w 4000 'luna://com.webos.service.audio/getSoundOut' '{}'
 run luna-send -n 1 'luna://com.webos.service.tv.systemproperty/getSystemInfo' '{"keys":["modelName","firmwareVersion","sdkVersion"]}'
 section 'Homebrew root service health — fixed id command only'
 run luna-send -n 1 'luna://org.webosbrew.hbchannel.service/exec' '{"command":"id -u"}'

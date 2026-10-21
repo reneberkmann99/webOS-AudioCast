@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "common.hpp"
+#include "backends/dile.hpp"
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <regex>
@@ -35,12 +36,16 @@ Config Config::parse(const Json &j, const Config &old, bool test) {
     c.http_lan = merged.at("http_lan").get<bool>();
     c.autostart = merged.at("autostart").get<bool>();
     c.confirmed = merged.at("playback_confirmed").get<bool>();
+    c.dile_gain_confirmed = merged.at("dile_gain_confirmed").get<bool>();
+    c.dile_continuous = merged.at("dile_continuous").get<bool>();
   } catch (const Json::exception &) {
     throw std::runtime_error("incorrect config value type");
   }
-  if (c.backend != "alsa" && !(test && c.backend == "test-tone"))
-    throw std::runtime_error("backend unavailable; only ALSA is implemented on TV");
-  if (!c.device.empty() && !std::regex_match(c.device, std::regex("hw:[0-9]{1,3},[0-9]{1,3}")))
+  if (c.backend != "alsa" && c.backend != "dile" && !(test && c.backend == "test-tone"))
+    throw std::runtime_error("backend unavailable; choose ALSA or the explicit experimental DILE backend");
+  if (c.backend == "dile" && c.device != "mstar-upload:0")
+    throw std::runtime_error("DILE requires explicit device mstar-upload:0");
+  if (c.backend != "dile" && !c.device.empty() && !std::regex_match(c.device, std::regex("hw:[0-9]{1,3},[0-9]{1,3}")))
     throw std::runtime_error(
         "device must be explicit hw:CARD,DEVICE (no default or microphone fallback)");
   if (c.transport != "rtp" && c.transport != "http" && c.transport != "both")
@@ -64,6 +69,18 @@ Config Config::parse(const Json &j, const Config &old, bool test) {
     throw std::runtime_error("invalid destination hostname/IP");
   if (c.backend != old.backend || c.device != old.device || c.fmt.json() != old.fmt.json())
     c.confirmed = j.value("playback_confirmed", false);
+  if (c.backend != old.backend || c.device != old.device)
+    c.dile_gain_confirmed = j.value("dile_gain_confirmed", false);
+  if (c.backend == "dile") {
+    if (c.fmt.sample != "S16_LE" || c.fmt.rate != 48000 || c.fmt.channels != 2)
+      throw std::runtime_error("DILE requires native S16_LE / 48000 Hz / stereo; no resampling");
+    if (c.autostart)
+      throw std::runtime_error("DILE requires an explicit manual start; automatic streaming is forbidden");
+    if (c.dile_continuous && !c.dile_gain_confirmed)
+      throw std::runtime_error("continuous DILE capture requires upload-gain consent");
+  } else {
+    c.dile_gain_confirmed = false;
+  }
   return c;
 }
 std::string random_token(size_t count) {
@@ -172,15 +189,19 @@ Json discover() {
       entry["unsafe_reason"] = hazard;
     dev.push_back(entry);
   }
+  Json dile = dile_inventory();
+  if (mstar_mad && dile.value("available", false))
+    dev.push_back({{"id", "mstar-upload:0"}, {"name", "MStar vendor playback upload"},
+                   {"backend", "dile"}, {"candidate", true}, {"verified", false},
+                   {"safe_to_open", true}, {"experimental", true}, {"capture_limit_seconds", 30},
+                   {"upload_gain_consent_required", true}});
   Json backends =
       Json::array({{{"id", "alsa"}, {"available", alsa_present}},
                    {{"id", "pulse-monitor"},
                     {"available", false},
                     {"reason", "TV media may bypass PulseAudio (confirmed on MStar: "
                                "sinks stay SUSPENDED during playback); monitor silent"}},
-                   {{"id", "vendor"},
-                    {"available", false},
-                    {"reason", "DILE/MStar MAD HAL loopback not implemented"}}});
+                   dile});
   std::string warning = "Inventory is not proof of playback capture. Test against known authorized "
                         "TV playback. Never select microphone/default input.";
   if (mstar_mad)

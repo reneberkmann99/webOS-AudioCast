@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Dynamic ALSA ABI: only libasound.so.2 at runtime, no copied vendor code/headers.
 #include "capture.hpp"
+#include "dile.hpp"
 #include <cerrno>
 #include <dlfcn.h>
 namespace ac {
@@ -188,6 +189,8 @@ public:
 std::unique_ptr<Capture> make_capture(const std::string &name, bool test) {
   if (name == "alsa")
     return std::unique_ptr<Capture>(new AlsaCapture);
+  if (name == "dile")
+    return make_dile_capture(test);
   if (name == "test-tone" && test)
     return std::unique_ptr<Capture>(new TestCapture);
   throw std::runtime_error("capture backend unavailable");

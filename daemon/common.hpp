@@ -52,6 +52,13 @@ struct Config {
   Format fmt;
   unsigned port = 5004, packet_ms = 10;
   bool http_lan = false, autostart = false, confirmed = false;
+  bool dile_gain_confirmed = false;
+  // Opt-in continuous capture (no 30s deadline). Only honored with explicit
+  // playback + upload-gain consent and a manual start; never with autostart.
+  bool dile_continuous = false;
+  // Internal lifecycle data, never accepted from JSON configuration.
+  std::string dile_recovery_file;
+  unsigned dile_limit_ms = 30000;
   Json json() const {
     return {{"backend", backend},
             {"device", device},
@@ -65,6 +72,8 @@ struct Config {
             {"profile", profile},
             {"http_lan", http_lan},
             {"autostart", autostart},
+            {"dile_gain_confirmed", dile_gain_confirmed},
+            {"dile_continuous", dile_continuous},
             {"playback_confirmed", confirmed}};
   }
   static Config parse(const Json &, const Config &, bool allow_test);

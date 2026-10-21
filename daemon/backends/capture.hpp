@@ -7,6 +7,9 @@ class Capture {
 public:
   virtual ~Capture() {};
   virtual void open(const Config &) = 0;
+  // Explicit cleanup may report restoration errors; destructors remain non-throwing.
+  virtual void close() {}
+  virtual Json diagnostics() const { return Json::object(); }
   // Return complete interleaved PCM frames only. Empty on timeout. Discontinuity on xrun.
   virtual std::vector<uint8_t> read(unsigned frames, bool &discontinuity) = 0;
   virtual unsigned long delay_frames() const = 0;

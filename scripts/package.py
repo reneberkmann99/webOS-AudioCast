@@ -47,7 +47,7 @@ if __name__ == '__main__':
     icon = STAGE / app['icon']
     manifest = {k: app[k] for k in ['id', 'version', 'type', 'title']}
     manifest.update({
-        'appDescription': 'Hardware-unqualified engineering prerelease. Root required. ALSA playback capture must be validated per TV.',
+        'appDescription': 'Experimental prerelease. Root required. Exact-build MStar DILE capture is opt-in and 30-second limited; validate every source and receiver.',
         'iconUri': 'data:image/png;base64,' + base64.b64encode(icon.read_bytes()).decode(),
         'rootRequired': True, 'ipkUrl': ipk.name,
         'ipkHash': {'sha256': hashlib.sha256(ipk.read_bytes()).hexdigest()},
@@ -56,4 +56,4 @@ if __name__ == '__main__':
     (DIST / (app['id'] + '.manifest.json')).write_text(json.dumps(manifest, indent=2)+'\n')
     (DIST / 'SHA256SUMS').write_text(manifest['ipkHash']['sha256'] + '  ' + ipk.name + '\n')
     print('Packaged:', ipk)
-    print('TV installation/capture NOT verified; see docs/validation.md')
+    print('General TV/receiver qualification remains incomplete; see docs/validation.md')

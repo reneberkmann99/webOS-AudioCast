@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "engine.hpp"
 #include "backends/capture.hpp"
+#include "backends/dile.hpp"
 #include "network/rtp.hpp"
 #include <fcntl.h>
 #include <sys/file.h>
@@ -116,6 +117,7 @@ Json Engine::status() {
   Json j = stats_;
   j["streaming"] = streaming();
   j["test_active"] = bool(testing_ && intent_);
+  j["capture_resources_active"] = bool(active_);
   j["backend"] = config_.backend;
   j["device"] = config_.device;
   j["source_verified"] = config_.confirmed;
@@ -127,6 +129,11 @@ Json Engine::status() {
   j["uptime_seconds"] = seconds(born_);
   j["config"] = config_.json();
   j["hardware_qualified"] = false;
+  j["experimental_capture_limit_seconds"] =
+      config_.backend == "dile" ? (config_.dile_continuous ? Json(nullptr) : Json(30)) : Json(nullptr);
+  bool pending_dile_recovery = access((dir_ + "/dile-recovery.json").c_str(), F_OK) == 0;
+  j["dile_pending_recovery"] = pending_dile_recovery;
+  j["dile_gain_restore_verified"] = dile_restore_verified() && !pending_dile_recovery;
   int64_t last = last_capture_ms_;
   j["capture_sample_age_ms"] = last > 0
                                    ? Json(std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -163,6 +170,16 @@ void Engine::start(bool test) {
         "select explicit playback capture device first; no microphone fallback");
   if (!test && !c.confirmed)
     throw std::runtime_error("confirm selected device captures known TV playback before streaming");
+  if (c.backend == "dile" && (!c.confirmed || !c.dile_gain_confirmed))
+    throw std::runtime_error("DILE requires playback confirmation and separate temporary upload-gain consent before any capture");
+  if (c.backend == "dile" && access((dir_ + "/dile-recovery.json").c_str(), F_OK) == 0)
+    throw std::runtime_error("pending DILE gain recovery; restore the interrupted transaction before capture");
+  if (c.backend == "dile") {
+    unsigned dile_ms = c.dile_continuous
+                           ? 604800000U
+                           : std::min(test ? 5000U : 30000U, dile_test_limit_ms(allow_test_));
+    dile_deadline_ms_ = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count() + dile_ms;
+  }
   testing_ = test;
   last_capture_ms_ = 0;
   paused_ = false;
@@ -186,6 +203,7 @@ void Engine::stop() {
   log("Streaming stopped");
 }
 void Engine::suspend() {
+  if (config().backend == "dile") { stop(); log("DILE suspend ends its bounded grant; explicit start required"); return; }
   paused_ = true;
   ++generation_;
   ring.clear();
@@ -193,6 +211,7 @@ void Engine::suspend() {
   log("Capture suspended; device released on next bounded read");
 }
 void Engine::resume() {
+  if (config().backend == "dile") throw std::runtime_error("DILE requires explicit start; resume cannot extend a capture grant");
   paused_ = false;
   ++generation_;
   stat("state", intent_ ? "starting" : "idle");
@@ -272,6 +291,12 @@ void Engine::capture_loop() {
     }
     active_ = true;
     Config c = config();
+    if (c.backend == "dile") {
+      int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count();
+      if (now >= dile_deadline_ms_) { stop(); log("DILE experimental capture time limit reached"); active_ = false; continue; }
+      c.dile_limit_ms = unsigned(dile_deadline_ms_ - now);
+      c.dile_recovery_file = dir_ + "/dile-recovery.json";
+    }
     unsigned gen = generation_;
     if (gen != frame_gen) {
       frame_gen = gen;
@@ -292,6 +317,9 @@ void Engine::capture_loop() {
       stat("state", "capturing");
       log("Capture opened: " + c.backend + " " + c.device);
       while (!quit_ && intent_ && !paused_ && gen == generation_) {
+        if (c.backend == "dile" && std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count() >= dile_deadline_ms_) {
+          stop(); log("DILE experimental capture time limit reached"); break;
+        }
         if (testing_ && seconds(test_start) >= 5) {
           stop();
           break;
@@ -323,7 +351,7 @@ void Engine::capture_loop() {
         stat("levels", {{"rms", levels}, {"peak", peak}});
         stat("signal", signal ? "detected" : "silence");
         stat("silence_seconds", seconds(last_signal));
-        stat("alsa_pending_ms", 1000.0 * src->delay_frames() / c.fmt.rate);
+        stat("alsa_pending_ms", c.backend == "alsa" ? Json(1000.0 * src->delay_frames() / c.fmt.rate) : Json(nullptr));
         size_t frames = data.size() / (c.fmt.channels * c.fmt.bytes());
         if (!testing_) {
           Block b;
@@ -336,11 +364,26 @@ void Engine::capture_loop() {
         frame += frames;
         pending_disc = false;
       }
+      src->close();
+      if (c.backend == "dile") stat("backend_capture",src->diagnostics());
     } catch (const std::exception &e) {
       stat("last_error", e.what());
       stat("state", "recovering");
       stat("levels", {{"rms", Json::array({0.0, 0.0})}, {"peak", Json::array({0.0, 0.0})}});
       log(std::string("Capture failure: ") + e.what());
+      if (c.backend == "dile") {
+        bool normal_expiry = std::string(e.what()).find("DILE experimental capture time limit reached") == 0 &&
+                             std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now().time_since_epoch()).count() >= dile_deadline_ms_ &&
+                             dile_restore_verified() && access((dir_ + "/dile-recovery.json").c_str(), F_OK) != 0;
+        // Never reopen after a HAL error or reset the time budget through the ALSA retry path.
+        stop();
+        stat("state", normal_expiry ? "idle" : "error");
+        if (normal_expiry) stat("last_error", "");
+        log(normal_expiry ? "DILE bounded capture completed; gain restoration verified" :
+                           "DILE failed closed; no automatic retry and no ALSA/default fallback");
+        active_ = false;
+        continue;
+      }
       for (unsigned i = 0; i < backoff / 20 && !quit_ && intent_ && !paused_ &&
                            !(testing_ && seconds(test_start) >= 5);
            ++i)

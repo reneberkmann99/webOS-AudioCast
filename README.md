@@ -2,11 +2,11 @@
 
 Capture real system playback audio from a rooted LG webOS TV and stream it to another device on your local network — for music-reactive lighting, audio visualization, authorized recording, or playback on another device.
 
-> **Status: hardware-unqualified engineering prerelease.** The native engine, network streaming, reference receiver, TV interface, supervisor, and IPK are implemented and covered by host-side automated tests. **No physical LG TV capture has been tested.** TV playback capture, real firmware ALSA behavior, and model compatibility remain unverified until the on-device worksheet in `docs/compatibility.md` is completed.
+> **Status: experimental engineering prerelease, not production-qualified.** On one real MStar LG TV, the standalone vendor DILE probe now captures **playback-correlated YouTube audio**: RMS 0.1485 playing → 0.000010 paused → 0.1354 resumed. The missing step was PCM-upload gain initialization; each authorized trial restored the original gain. The opt-in DILE backend is now installed and verified through the TV's native control API, with a 30-second limit per manual start and verified gain restoration. No audible receiver test, other source/output matrix or long-running qualification is claimed. Unsafe MAD ALSA devices remain blocked. See `docs/dile-pcm-api.md`.
 
 ```text
-TV playback ─▶ vendor capture tap (explicit hw:C,D) ─▶ native ALSA read ─▶ bounded ring
-                  (never microphone / default / mixer writes)              │
+TV playback ─▶ explicit ALSA tap OR opt-in MStar DILE ─▶ native capture ─▶ bounded ring
+                  (never microphone / default / routing writes)            │
                                                                     RTP/L16 (UDP)
                                                                     RTCP + SDP
                                                                     HTTP raw PCM (7070)
@@ -16,22 +16,22 @@ TV playback ─▶ vendor capture tap (explicit hw:C,D) ─▶ native ALSA read 
 
 ## What it is / is not
 
-- Captures a **copy** of playback audio where the firmware exposes a supported tap; TV speakers/output continue normally. This app never modifies routing, mixer, gain, or volume.
+- Captures a **copy** of playback audio where firmware exposes a supported tap. The default ALSA path never changes routing, mixer, gain or volume. Experimental MStar DILE research requires explicit consent for a temporary **upload-only** gain change, with restoration and bounded trials; speaker volume and routing are not changed.
 - Runs as a detached root supervisor so streaming survives closing the TV app; uninstall stops the service and leaves only a symlink, not an executable boot script.
 - Requires an already-rooted TV with Homebrew Channel. It does not root TVs, patch firmware, or bypass DRM. Protected playback may yield silence or deny capture by design.
-- Captures from an **explicit** `hw:CARD,DEVICE` only. No `default`/microphone fallback, no ALSA loopback installation, no hidden resampling, no TV-side recording. `hw:0,13` (MARS CAPTURE_TEST) was an externally reported Realtek/webOS 7.4.0 example, **not a universal default**.
+- Uses an **explicit** `hw:CARD,DEVICE` for ALSA or `mstar-upload:0` for the exact-build experimental DILE backend. No `default`/microphone fallback, ALSA loopback installation, hidden resampling or TV-side recording. `hw:0,13` was one externally reported Realtek example, **not a universal default**.
 
 ## Quick start
 
 Build (Linux x86_64 host, Python ≥3.12, C++ compiler; Node ≥20 only for dev tests):
 
 ```sh
-./scripts/build.sh test       # native build + 40 host tests (daemon/ALSA-ABI/receiver/supervisor)
+./scripts/build.sh test       # native build + host regression tests (daemon/ALSA-ABI/receiver/supervisor)
 npm ci                        # dev-only; then: npm run test:ui  (browser vs real native API)
 ./scripts/build.sh package    # pinned SDK fetch → ARMv7 IPK + Homebrew manifest
 ```
 
-Install/validate on a rooted TV: follow `docs/installation.md`, then fill the worksheet in `docs/compatibility.md` **before** relying on any model. A prebuilt `dist/org.webosbrew.audiocast_0.1.0_arm.ipk` and its `dist/SHA256SUMS` checksum are included in the engineering release.
+Install/validate on a rooted TV: follow `docs/installation.md`, then fill the worksheet in `docs/compatibility.md` **before** relying on any model. The prebuilt `dist/org.webosbrew.audiocast_0.1.1_arm.ipk` and its `dist/SHA256SUMS` checksum are engineering-release artifacts, not proof of playback capture.
 
 Receive:
 
@@ -67,6 +67,7 @@ third_party/    pinned nlohmann/json single header (MIT) — nothing else vendor
 - `docs/troubleshooting.md` — failure diagnosis without firmware modification
 - `docs/research.md` — audio-architecture feasibility findings and source attribution
 - `docs/validation.md` — what was actually tested vs unverified, how to reproduce
+- `docs/capture-fix-20261021.md` — actual-TV DILE playback-correlation, native API and GUI acceptance, test caps and remaining gaps
 
 ## Provenance & license
 

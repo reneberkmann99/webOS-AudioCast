@@ -97,7 +97,7 @@ std::string response(unsigned code, const std::string &body, const std::string &
   return "HTTP/1.1 " + std::to_string(code) + " " + status + "\r\nContent-Type: " + type +
          "\r\nContent-Length: " + std::to_string(body.size()) +
          "\r\nConnection: close\r\nCache-Control: no-store\r\n" +
-         (cors ? "Access-Control-Allow-Origin: null\r\nAccess-Control-Allow-Methods: GET, POST, "
+         (cors ? "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, "
                  "OPTIONS\r\nAccess-Control-Allow-Headers: Authorization, Content-Type\r\n"
                : "") +
          "\r\n" + body;

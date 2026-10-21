@@ -21,6 +21,16 @@ The reference receiver disables ambient HTTP proxies and redirects to avoid cred
 
 ## Residual/unqualified risks
 
+- Experimental DILE capture temporarily changes **upload-only gain**, not speaker volume/routing,
+  after separate explicit consent. It is restricted to the inspected library build and a 30-second
+  manual grant; no DILE autostart, retry or ALSA fallback. A private gain-recovery record is committed
+  before the setter. Normal cleanup verifies restoration after StopUpload; the supervisor attempts
+  bounded owner-only recovery after an interrupted owner exits and quarantines on failure. SIGKILL,
+  power loss or a wedged HAL can still require manual recovery/reboot; a timer is not a guarantee
+  against an uninterruptible kernel hang. Active Bluetooth/ACR coexistence is not qualified.
+- DILE library size/FNV fingerprints and a symbol-offset check are **compatibility guards**, not
+  cryptographic code authenticity. Protect the existing root/HAL trust boundary. ABI fixture loading
+  requires an explicit test-only CLI opt-in and is never packaged as a TV library.
 - Rooted TV firmware/vendor ALSA driver behavior is not qualified. Opening even a capture-only device may have SoC-specific side effects; no routing invariance can be promised without testing.
 - No DRM bypass, protected partition modification, firmware patching, proprietary library redistribution, microphone fallback, or hidden recording.
 - Linux resource/socket timeouts cannot guarantee that a buggy kernel/vendor driver never blocks an ioctl. Supervisor offers bounded process shutdown; uninterruptible kernel waits require platform-specific investigation, not a firmware workaround here.
