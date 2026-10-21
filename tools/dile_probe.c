@@ -19,6 +19,8 @@ static uint64_t rms_n = 0;
 static int16_t first[16];
 static int first_n = 0;
 static int first_fired = 0;
+static volatile double sec_sum_sq = 0.0;
+static volatile uint64_t sec_n = 0;
 
 static void on_term(int sig) {
   (void)sig;
@@ -46,6 +48,8 @@ static int pcm_callback(const void *pcm, int bytes) {
   for (int i = 0; i < n && rms_n < 1000000; ++i, ++rms_n) {
     double x = s[i] / 32768.0;
     sum_sq += x * x;
+    sec_sum_sq += x * x;
+    ++sec_n;
   }
   if (first_n < 16) {
     int take = n < (16 - first_n) ? n : (16 - first_n);
@@ -104,8 +108,11 @@ int main(int argc, char **argv) {
   for (int i = 0; i < seconds * 10 && !stop; ++i) {
     usleep(100000); // 100ms * 10 = 1s
     if (i % 10 == 0) {
-      fprintf(stderr, "progress t=%d calls=%llu bytes=%llu\n", i / 10, (unsigned long long)calls,
-              (unsigned long long)total_bytes);
+      double srms = sec_n ? sqrt(sec_sum_sq / sec_n) : 0.0;
+      sec_sum_sq = 0.0;
+      sec_n = 0;
+      fprintf(stderr, "progress t=%d calls=%llu bytes=%llu rms_1s=%.5f\n", i / 10,
+              (unsigned long long)calls, (unsigned long long)total_bytes, srms);
       fflush(stderr);
     }
   }

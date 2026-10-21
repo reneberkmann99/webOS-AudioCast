@@ -120,6 +120,34 @@ Plain `StartUpload` from a third-party process yields silence. The remaining unk
 This is the next reverse-engineering target. It is a routing/context problem, **not** a signature
 problem (the signature is recovered above).
 
+## Boot-context probe result (2026-10-21) — boot chime only, NOT playback
+
+A boot-time probe (temporary Homebrew `init.d` hook, ~15s after boot, 60s capture) with
+per-second RMS logging showed:
+
+```text
+progress t=0  rms_1s=0.13957   ← one loud second (the TV boot chime, ~-17 dBFS)
+progress t=1..59 rms_1s=0.00000 ← pure silence for the rest
+RESULT calls=2504 bytes=11538432 min=4608 max=4608 rms=0.01160
+```
+
+The single non-zero second is the TV's **startup chime**, not continuous playback. (An earlier
+20s capture's `rms=0.00620` was that same chime averaged over a longer window — I initially
+misread it as a breakthrough; the per-second data corrected that.) So:
+
+- The DILE `StartUpload` consumer **does** receive audio on some system-sound path (boot chime).
+- It does **not** receive media decode audio (YouTube/etc.) — media bypasses both PulseAudio and
+  this upload tap (confirmed again: `pcm_output` sink stays SUSPENDED during playback).
+- To capture media, the system must **route** the media decode to the consumer. That routing is
+  exactly what `btaudiosrc` (BT sound-out) and `acr2` (ACR) get from the audio framework, and is
+  likely controllable via `audiod`'s `setLoopbackStatus`/`loopback_set_parameters` and the Luna
+  `com.webos.audio/state/set {"loopback": ...}` state.
+
+**Honest status:** the API and callback signature are fully recovered and the probe is proven safe;
+the remaining blocker is the *routing* of media decode to a third-party consumer, which is a
+proprietary audiod/LS2 problem (and SSH `luna-send` is ACL-blocked, though the app's own
+PalmServiceBridge context may not be).
+
 ## Additional on-device findings (2026-10-21, second pass)
 
 - **Call order**: `btaudiosrc` calls `StartUpload(channel)` **before** `RegSendPCMCallback(channel, cb)`.
