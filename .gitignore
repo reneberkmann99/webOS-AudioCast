@@ -1,0 +1,15 @@
+.tools/
+node_modules/
+build/
+dist/
+research/
+__pycache__/
+*.pyc
+.venv/
+core
+core.*
+*.wav
+*.pcm
+*.raw
+.env
+credentials.json

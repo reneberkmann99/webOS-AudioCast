@@ -1,0 +1,18 @@
+{
+  "nlohmann_json_3_11_3": "9bea4c8066ef4a1c206b2be5a36302f8926f7fdc6087af5d20b417d0cf103ea6",
+  "openlgtv/buildroot-nc4": {
+    "release": "2026.08-webos",
+    "url": "https://github.com/openlgtv/buildroot-nc4/releases/download/2026.08-webos/arm-webos-linux-gnueabi_sdk-buildroot-x86_64.tar.gz",
+    "sha256": "2230a6351e5cce6fcb9d4fdcb4697335f223995401ef969c81744aaeb14c5344"
+  },
+  "webosbrew/ares-cli-rs": {
+    "release": "v0.7.0",
+    "url": "https://github.com/webosbrew/ares-cli-rs/releases/download/v0.7.0/ares-cli-rs-v0.7.0-linux-x86_64.tar.gz",
+    "sha256": "be49153274939dba1ba180940144e3b1265911538a013c4c17342c6bc41fc5fc"
+  },
+  "legacy_sdk": {
+    "release": "webos-d7ed7ee",
+    "url": "https://github.com/openlgtv/buildroot-nc4/releases/download/webos-d7ed7ee/arm-webos-linux-gnueabi_sdk-buildroot.tar.gz",
+    "sha256": "32816626e99fb34922a49d0c639f7c8a30356fffb222372d4823027f1382f640"
+  }
+}

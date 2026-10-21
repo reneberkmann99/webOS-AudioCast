@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src http://127.0.0.1:7071; object-src 'none'; base-uri 'none'">
+<title>webOS AudioCast</title><link rel="stylesheet" href="src/style.css"></head>
+<body><main>
+<header><div class="brand"><img src="assets/icon80.png" alt=""><div><p class="eyebrow">SYSTEM AUDIO / LOCAL NETWORK</p><h1>AudioCast</h1></div></div><div id="connection" role="status">Connecting to Homebrew…</div></header>
+<div class="notice">Engineering prerelease · Playback capture must be validated on your TV. Never select a microphone. Normal TV routing and volume are not changed.</div>
+<nav aria-label="Pages"><button data-page="dashboard" class="selected">Dashboard</button><button data-page="settings">Configuration</button><button data-page="diagnostics">Diagnostics</button><button id="reconnect">Reconnect service</button></nav>
+<div id="message" role="alert" aria-live="polite"></div>
+<section id="dashboard" class="page">
+<div class="hero"><div><p class="eyebrow">CAPTURE ENGINE</p><h2 id="captureState">Unknown</h2><p id="signalState">Waiting for a real service response</p></div><div class="actions"><button class="primary" id="start">Start streaming</button><button id="stop">Stop</button></div></div>
+<div class="grid"><article class="card wide"><h3>Captured signal</h3><p id="sourceName">No capture device selected</p><div class="meter-row"><span>L</span><div class="meter"><div id="meterL"></div></div><span id="levelL">—</span></div><div class="meter-row"><span>R</span><div class="meter"><div id="meterR"></div></div><span id="levelR">—</span></div><p class="muted">Real captured PCM only. Activity is not proof of TV playback provenance.</p></article>
+<article class="card"><h3>Network</h3><strong id="networkState">Unknown</strong><p id="destination">—</p><p id="receivers">Receivers: unknown</p><p id="throughput">—</p></article>
+<article class="card"><h3>Audio format & output</h3><strong id="format">—</strong><p id="tvOutput">TV output: unknown</p><p id="verification">Source not confirmed</p></article>
+<article class="card"><h3>Latency & resources</h3><p id="queueLatency">Capture read → sender: unknown</p><p id="hardwareLatency">ALSA pending: unknown</p><p>Total TV → receiver: not measured</p><p id="resources">CPU / memory: unknown</p></article></div>
+<div class="toolbar"><button id="testCapture">Test audio capture · 5 sec</button><button id="testReceiver">Test receiver connection</button><button id="pause">Release for standby</button><button id="resume">Resume capture</button></div>
+<p id="lastError" class="error">Last error: unknown</p>
+</section>
+<section id="settings" class="page" hidden><h2>Configuration</h2><p class="muted">Stop capture before applying changes. Use the TV keyboard, pointer, or the on-screen editor (OK on a text field).</p>
+<form id="configForm"><div class="form-grid">
+<label>Capture backend<select id="backend"><option value="alsa">ALSA · explicit playback capture</option></select></label>
+<label>Discovered devices<select id="deviceList"><option value="">Select a device…</option></select></label>
+<label>Manual capture device<input id="device" type="text" maxlength="16" placeholder="hw:CARD,DEVICE" autocomplete="off" data-edit="true"></label>
+<label>Transport<select id="transport"><option value="rtp">UDP / RTP L16</option><option value="http">HTTP raw PCM</option><option value="both">RTP + HTTP</option></select></label>
+<label>RTP destination IP / hostname<input id="destinationInput" type="text" maxlength="253" data-edit="true" autocomplete="off"></label>
+<label>RTP destination port<input id="destinationPort" type="text" inputmode="numeric" maxlength="5" data-edit="true"></label>
+<label>Native PCM format<select id="sampleFormat"><option value="S16_LE">Signed 16-bit little-endian</option><option value="S32_LE">Signed 32-bit · HTTP only</option></select></label>
+<label>Native sample rate<select id="rate"><option value="32000">32,000 Hz</option><option value="44100">44,100 Hz</option><option value="48000">48,000 Hz</option><option value="96000">96,000 Hz</option></select></label>
+<label>Channels<select id="channels"><option value="2">Stereo</option><option value="1">Mono</option></select></label>
+<label>Capture block duration<select id="packetMs"><option value="5">5 ms</option><option value="10">10 ms</option><option value="20">20 ms</option></select></label>
+<label>Buffering profile<select id="profile"><option value="low-latency">Low latency · 3 ALSA periods</option><option value="stable">Stable · 8 ALSA periods</option></select></label>
+</div><div class="checks">
+<label><input id="httpLan" type="checkbox">Enable authenticated HTTP audio on LAN port 7070 (unencrypted HTTP)</label>
+<label><input id="confirmed" type="checkbox">I tested this exact device/format against known authorized TV playback; this is not microphone input</label>
+<label><input id="autostart" type="checkbox">Automatically stream at boot (requires confirmed source and Homebrew startup)</label>
+</div><div class="toolbar"><button type="submit" class="primary">Apply configuration</button><button type="button" id="refreshDevices">Refresh devices</button><button type="button" id="showToken">Show HTTP stream credential</button></div></form>
+<p class="muted">RTP/L16 has no authentication or encryption. Send only on a trusted LAN. UDP sends cannot establish whether a receiver is listening. No audio is recorded on the TV.</p>
+<pre id="credential" hidden></pre>
+</section>
+<section id="diagnostics" class="page" hidden><h2>Diagnostics</h2><div class="toolbar"><button id="refreshLogs">Refresh logs</button><button id="export">Export diagnostics</button><button id="shellDiagnostic">Collect system inventory</button></div><p class="muted">Export includes model/system/network details, never audio or credentials. Review before sharing. TV browser download support varies; the SSH diagnostic tool is also bundled.</p><pre id="logs">No service logs loaded.</pre><pre id="diagnosticOutput" hidden></pre></section>
+<footer><span>0.1.0 · rooted LG webOS · ARMv7 build</span><span>Arrows: navigate · OK: select/edit · Back: dashboard/exit · Closing this app does not stop streaming</span></footer>
+</main>
+<div id="editor" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="editorTitle"><div class="editor-panel"><h2 id="editorTitle">Edit value</h2><output id="editValue"></output><div id="keyboard" class="keyboard"></div><div class="toolbar"><button id="editBackspace">⌫ Delete</button><button id="editClear">Clear</button><button id="editDone" class="primary">Done</button><button id="editCancel">Cancel</button></div></div></div>
+<script src="src/hbchannel.js"></script><script src="src/app.js"></script></body></html>

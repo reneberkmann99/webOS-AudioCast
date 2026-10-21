@@ -1,0 +1,15 @@
+{
+  "id": "org.webosbrew.audiocast",
+  "version": "0.1.0",
+  "type": "web",
+  "main": "index.html",
+  "title": "webOS AudioCast",
+  "appDescription": "Rooted-TV playback audio capture and LAN streaming. Hardware qualification required.",
+  "vendor": "AudioCast contributors",
+  "icon": "assets/icon80.png",
+  "largeIcon": "assets/icon130.png",
+  "bgColor": "#0b1018",
+  "resolution": "1920x1080",
+  "disableBackHistoryAPI": true,
+  "handlesRelaunch": false
+}

@@ -1,0 +1,3 @@
+# Optional only: headless receive, levels, hooks and WAV recording use Python stdlib.
+# Playback additionally requires a working PortAudio installation on Linux/macOS.
+sounddevice==0.5.3

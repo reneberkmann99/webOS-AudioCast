@@ -1,0 +1,8 @@
+{
+  "name": "webos-audiocast",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "scripts": { "test:ui": "node tests/test_ui.cjs" },
+  "devDependencies": { "playwright": "1.58.2" }
+}
