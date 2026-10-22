@@ -241,12 +241,12 @@ def levels(pcm: bytes, sample_format: str, channels: int):
 
 class Sink:
     """Bounded worker isolates networking from slow playback/hooks/explicit disk recording."""
-    def __init__(self, rate, channels, sample_format, play=False, record=None, hook=None):
+    def __init__(self, rate, channels, sample_format, play=False, record=None, hook=None, device=None):
         self.format={'rate':rate,'channels':channels,'sample_format':sample_format}
         self.align=channels*(2 if sample_format=='S16_LE' else 4)
         self.queue=queue.Queue(maxsize=8)
         self.drops=0;self.playback_underruns=0;self.last_levels=[];self.error=None
-        self.finished=threading.Event();self.record=record;self.play=play;self.hook=hook
+        self.finished=threading.Event();self.record=record;self.play=play;self.hook=hook;self.device=device
         self.worker=threading.Thread(target=self.run,name='audiocast-sink',daemon=True)
         self.worker.start()
 
@@ -271,7 +271,8 @@ class Sink:
                 try:import sounddevice
                 except ImportError as exc:raise RuntimeError('Optional playback needs pip install -r receiver/requirements.txt') from exc
                 playback=sounddevice.RawOutputStream(samplerate=self.format['rate'],channels=self.format['channels'],
-                     dtype='int16' if self.format['sample_format']=='S16_LE' else 'int32',latency='low')
+                     dtype='int16' if self.format['sample_format']=='S16_LE' else 'int32',latency='low',
+                     device=self.device)
                 playback.start()
             if self.record:
                 # Exclusive creation prevents accidentally overwriting an existing recording.
@@ -320,7 +321,7 @@ def receiver(args, stop):
     http_drops=[0]
     try:
         if args.mode=='rtp':
-            sink=Sink(args.rate,args.channels,'S16_LE',args.play,args.record,load_hook(args.hook))
+            sink=Sink(args.rate,args.channels,'S16_LE',args.play,args.record,load_hook(args.hook),args.device)
             jitter=JitterBuffer(args.rate,args.channels,args.jitter_ms)
             family=socket.AF_INET6 if ':' in args.bind else socket.AF_INET
             sock=socket.socket(family,socket.SOCK_DGRAM);sock.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,65536)
@@ -358,7 +359,7 @@ def receiver(args, stop):
             if rate not in (32000,44100,48000,96000) or channels not in (1,2) or fmt not in ('S16_LE','S32_LE'):
                 raise ValueError('unsupported HTTP PCM metadata')
             if response.headers.get_content_type()!='application/octet-stream':raise ValueError('unexpected HTTP stream format')
-            sink=Sink(rate,channels,fmt,args.play,args.record,load_hook(args.hook))
+            sink=Sink(rate,channels,fmt,args.play,args.record,load_hook(args.hook),args.device)
             framer=PCMFramer(channels*(2 if fmt=='S16_LE' else 4))
             def http_read():
                 try:
@@ -397,6 +398,7 @@ def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
     common=argparse.ArgumentParser(add_help=False)
     common.add_argument('--play',action='store_true',help='optional sounddevice/PortAudio playback')
+    common.add_argument('--device',help='output device name/index for --play (e.g. a BlackHole loopback or AirPods); default = system default output')
     common.add_argument('--record',type=Path,help='explicit WAV recording; never default')
     common.add_argument('--duration',type=float,default=0,help='stop after this many seconds')
     common.add_argument('--hook',help='trusted local Python module:function PCM processing callback')

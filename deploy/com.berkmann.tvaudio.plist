@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  TV audio -> BlackHole loopback input, auto-started at login and restarted on exit.
+
+  Install:
+    mkdir -p ~/Library/LaunchAgents
+    # edit the two paths below (ProgramArguments + WorkingDirectory) to the repo checkout
+    cp deploy/com.berkmann.tvaudio.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.berkmann.tvaudio.plist
+
+  The TV must be powered on and AudioCast streaming (app -> mstar-upload:0 -> Start)
+  for audio to flow. When it is, "BlackHole 2ch" appears as a live input device.
+  To route it to AirPods instead, change ProgramArguments device to your AirPods name
+  (see `scripts/tv-audio-mac.sh list-devices`), or use a Multi-Output Device.
+-->
+<dict>
+  <key>Label</key>
+  <string>com.berkmann.tvaudio</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/rene/workspace/webos-audiocast/scripts/tv-audio-mac.sh</string>
+    <string>BlackHole 2ch</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/rene/workspace/webos-audiocast</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TV_HOST</key>
+    <string>10.10.40.104</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/com.berkmann.tvaudio.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/com.berkmann.tvaudio.log</string>
+</dict>
+</plist>

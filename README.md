@@ -49,7 +49,8 @@ app/            unprivileged ES5 webOS TV app (remote navigation, real API, no m
 daemon/         native C++11 engine: capture, backends, network (RTP/RTCP/HTTP), control
 service/        Homebrew startup supervisor + fixed-action manage/boot scripts
 receiver/       cross-platform Python reference receiver (+ optional lighting hook)
-scripts/        diagnose.sh, build.sh, package.py, ipk.py, fetch-tools.py, deploy.sh, soak.py
+scripts/        diagnose.sh, build.sh, package.py, ipk.py, fetch-tools.py, deploy.sh, soak.py, tv-audio-mac.sh
+deploy/         vm-docker HyperHDR pipeline + macOS launchd agent
 tests/          daemon/ALSA-ABI/receiver/supervisor integration + UI browser tests
 docs/           architecture, protocols, installation, receiver, compatibility, security, …
 third_party/    pinned nlohmann/json single header (MIT) — nothing else vendored
@@ -68,6 +69,7 @@ third_party/    pinned nlohmann/json single header (MIT) — nothing else vendor
 - `docs/research.md` — audio-architecture feasibility findings and source attribution
 - `docs/validation.md` — what was actually tested vs unverified, how to reproduce
 - `docs/capture-fix-20261021.md` — actual-TV DILE playback-correlation, native API and GUI acceptance, test caps and remaining gaps
+- `docs/mac-input.md` — expose the TV as a macOS input device (BlackHole loopback) and route to AirPods
 
 ## Provenance & license
 
